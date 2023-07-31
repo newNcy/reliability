@@ -426,10 +426,9 @@ int ikcp_recv(ikcpcb *kcp, char *buffer, int len)
 	// move available data from rcv_buf -> rcv_queue
     for (IUINT8 channel = 0; channel < IKCP_CHANNEL_COUNT; channel ++) {
         while (! iqueue_is_empty(&kcp->rcv_buf[channel])) {
-            while (! iqueue_is_empty(&kcp->rcv_buf[channel])) {
-                seg = iqueue_entry(kcp->rcv_buf[channel].next, IKCPSEG, node);
-                if ((seg->sn == kcp->rcv_nxt[channel] && seg->seq == 0 || seg->sn == kcp->rcv_nxt[channel] - 1 && seg->seq > kcp->rcv_seq_highest[channel])  && kcp->nrcv_que < kcp->rcv_wnd) {
-                    iqueue_del(&seg->node);
+            seg = iqueue_entry(kcp->rcv_buf[channel].next, IKCPSEG, node);
+            if ((seg->sn == kcp->rcv_nxt[channel] && seg->seq == 0 || seg->sn == kcp->rcv_nxt[channel] - 1 && seg->seq > kcp->rcv_seq_highest[channel])  && kcp->nrcv_que < kcp->rcv_wnd) {
+                iqueue_del(&seg->node);
                 kcp->nrcv_buf--;
                 iqueue_add_tail(&seg->node, &kcp->rcv_queue);
                 kcp->nrcv_que++;
@@ -647,7 +646,7 @@ static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una, IUINT8 channel)
 	}
 }
 
-static void ikcp_parse_fastack(ikcpcb *kcp, IUINT32 sn, IUINT16 seq, IUINT32 ts, IUINT8 channel)
+static void ikcp_parse_fastack(ikcpcb *kcp, IUINT32 sn,  IUINT32 ts, IUINT16 seq, IUINT8 channel)
 {
 	struct IQUEUEHEAD *p, *next;
 
@@ -877,7 +876,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			}
 			if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) < 0) {
 				ikcp_ack_push(kcp, sn, ts, seq, channel);
-				if (_itimediff(sn, kcp->rcv_nxt) >= 0) {
+				if (_itimediff(sn, kcp->rcv_nxt[channel]) >= 0 ) {
 					seg = ikcp_segment_new(kcp, len);
 					seg->conv = conv;
 					seg->cmd = cmd;
@@ -923,7 +922,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 
 
         if (flag != 0) {
-            ikcp_parse_fastack(kcp, maxack, latest_ts);
+            ikcp_parse_fastack(kcp, maxack, latest_ts, seq, channel);
         }
 
         if (_itimediff(kcp->snd_una[channel], prev_una) > 0) {
@@ -1007,7 +1006,7 @@ void ikcp_flush(ikcpcb *kcp)
 	seg.cmd = IKCP_CMD_ACK;
 	seg.frg = 0;
 	seg.wnd = ikcp_wnd_unused(kcp);
-	seg.una = kcp->rcv_nxt;
+	seg.una = 0;
 	seg.len = 0;
 	seg.sn = 0;
     seg.seq = 0;
@@ -1023,6 +1022,7 @@ void ikcp_flush(ikcpcb *kcp)
 			ptr = buffer;
 		}
 		ikcp_ack_get(kcp, i, &seg.sn, &seg.ts, &seg.seq, &seg.channel);
+        seg.una = kcp->rcv_nxt[seg.channel];
 		ptr = ikcp_encode_seg(ptr, &seg);
 	}
 
@@ -1276,13 +1276,15 @@ IUINT32 ikcp_check(const ikcpcb *kcp, IUINT32 current)
 
     tm_flush = _itimediff(ts_flush, current);
 
-    for (p = kcp->snd_buf.next; p != &kcp->snd_buf; p = p->next) {
-        const IKCPSEG *seg = iqueue_entry(p, const IKCPSEG, node);
-        IINT32 diff = _itimediff(seg->resendts, current);
-        if (diff <= 0) {
-            return current;
+    for (IUINT8 channel = 0; channel < IKCP_CHANNEL_COUNT; channel ++) {
+        for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = p->next) {
+            const IKCPSEG *seg = iqueue_entry(p, const IKCPSEG, node);
+            IINT32 diff = _itimediff(seg->resendts, current);
+            if (diff <= 0) {
+                return current;
+            }
+            if (diff < tm_packet) tm_packet = diff;
         }
-        if (diff < tm_packet) tm_packet = diff;
     }
 
     minimal = (IUINT32)(tm_packet < tm_flush ? tm_packet : tm_flush);

@@ -75,7 +75,7 @@ void ReliabilityLayer::Send(const void * message, uint32_t length, Reliability r
     }
     else 
     {
-        ikcp_send(kcp_, (char*)message, length, reliability == Reliability::RELIABLE_SEQUENCED, channel);
+        ikcp_send(kcp_, (char*)message, length, reliability == Reliability::RELIABLE_SEQUENCED ?  IKCP_RELIABLE_SEQUENCED : IKCP_RELIABLE_ORDERD, channel);
     }
 }
 
