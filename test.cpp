@@ -38,6 +38,7 @@ struct Net
 
     void send(int dst, const void * buff, uint32_t length)
     {
+        printf("send to %d %d bytes\n", dst, length);
         std::lock_guard<std::mutex> _(netmtx);
         if (rand() % 100 < lostrate) {
             return ;
