@@ -905,11 +905,31 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 				ikcp_log(kcp, IKCP_LOG_IN_DATA, 
 					"input psh: sn=%lu ts=%lu", (unsigned long)sn, (unsigned long)ts);
 			}
-			if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) < 0) {
+
+            if (reliability == IKCP_UNRELIABLE) {
+                seg = ikcp_segment_new(kcp, len);
+                seg->conv = conv;
+                seg->cmd = cmd;
+                seg->frg = frg;
+                seg->wnd = wnd;
+                seg->ts = ts;
+                seg->sn = sn;
+                seg->una = una;
+                seg->len = len;
+                seg->seq = seq;
+                seg->channel = channel;
+                seg->reliability = reliability;
+
+                if (len > 0) {
+                    memcpy(seg->data, data, len);
+                }
+                iqueue_add_tail(&seg->node, &kcp->rcv_queue);
+                kcp->nrcv_que ++;
+            } else if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) < 0) {
                 if (reliability > IKCP_UNRELIABLE_SEQUENCED) {
                     ikcp_ack_push(kcp, sn, ts, seq, channel, reliability);
                 }
-				if (_itimediff(sn, kcp->rcv_nxt[channel]) >= 0) {
+                if (_itimediff(sn, kcp->rcv_nxt[channel]) >= 0) {
 					seg = ikcp_segment_new(kcp, len);
 					seg->conv = conv;
 					seg->cmd = cmd;

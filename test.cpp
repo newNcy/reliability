@@ -185,7 +185,7 @@ void client()
         if (sn <= limit && now - last > 10) {
             last = now;
             //reliabilityLayer->Send(&sn, sizeof(sn), sn % 10==0? Reliability::RELIABLE_ORDERED : Reliability::RELIABLE_SEQUENCED, 0);
-            ikcp_send(kcp, (char*)&sn, sizeof(sn), IKCP_UNRELIABLE_SEQUENCED, 0);
+            ikcp_send(kcp, (char*)&sn, sizeof(sn), IKCP_UNRELIABLE, 0);
             ikcp_flush(kcp);
             printf("[c:%u] send %d\n", now, sn);
             sn ++ ;
