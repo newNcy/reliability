@@ -261,14 +261,10 @@ typedef struct IQUEUEHEAD iqueue_head;
 #endif
 #define IKCP_CHANNEL_COUNT      32
 
-enum IKCP_RELIABILITY {
-    IKCP_UNRELIABLE,
-    IKCP_UNRELIABLE_SEQUENCED,
-    IKCP_RELIABLE_SEQUENCED,
-    IKCP_RELIABLE_ORDERD,
-};
-
-typedef enum IKCP_RELIABILITY ikcp_reliability;
+#define IKCP_UNRELIABLE             0
+#define IKCP_UNRELIABLE_SEQUENCED   1
+#define IKCP_RELIABLE_SEQUENCED     2
+#define IKCP_RELIABLE_ORDERD        3
 
 
 //=====================================================================
@@ -290,15 +286,15 @@ struct IKCPSEG
 	IUINT32 fastack;
 	IUINT32 xmit;
     IUINT8 channel;
+    IUINT8 reliability;
     IUINT16 seq;
-    IUINT16 seq_una;
-    ikcp_reliability reliability;
 	char data[1];
 };
 
 struct IKCP_ACK
 {
     IUINT8 channel;
+    IUINT8 reliability;
     IUINT16 seq;
     IUINT32 sn;
     IUINT32 ts;
@@ -388,7 +384,7 @@ void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len,
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
 
 // user/upper level send, returns below zero for error
-int ikcp_send(ikcpcb *kcp, const char *buffer, int len, ikcp_reliability reliability, IUINT8 channel);
+int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT8 reliability, IUINT8 channel);
 
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // ikcp_check when to call it again (without ikcp_input/_send calling).
