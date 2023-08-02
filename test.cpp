@@ -85,7 +85,7 @@ struct Net
 };
 
 
-Net net(10, 60, 125);
+Net net(20, 60, 125);
 bool clientFinish = false;
 
 
@@ -133,7 +133,6 @@ void server()
         int rc = net.recv(0, buff, MTU);
         if (rc > 0) {
             raw ++;
-            printf("process %d bytes\n", rc);
             fflush(stdout);
             ikcp_input(kcp, buff, rc);
             //reliabilityLayer->ProcessMessage(buff, rc);
@@ -177,15 +176,16 @@ void client()
     printf("client start\n");
 
     int sn = 1;
+    int limit = 9;
     auto last = iclock();
     for (;;) {
         //net.send(0, &i, sizeof(i));
         auto now = iclock();
         ikcp_update(kcp, now);
-        if (sn < 100 && now - last > 10) {
+        if (sn <= limit && now - last > 10) {
             last = now;
             //reliabilityLayer->Send(&sn, sizeof(sn), sn % 10==0? Reliability::RELIABLE_ORDERED : Reliability::RELIABLE_SEQUENCED, 0);
-            ikcp_send(kcp, (char*)&sn, sizeof(sn), sn % 10 == 0 ? IKCP_RELIABLE_ORDERD : IKCP_RELIABLE_SEQUENCED, 0);
+            ikcp_send(kcp, (char*)&sn, sizeof(sn), IKCP_UNRELIABLE_SEQUENCED, 0);
             ikcp_flush(kcp);
             printf("[c:%u] send %d\n", now, sn);
             sn ++ ;
@@ -197,15 +197,13 @@ void client()
         }
         fflush(stdout);
         isleep(5);
-
+        if (sn > limit && ikcp_waitsnd(kcp) == 0) {
+            break;
+        } else if (sn > limit){
+        }
     }
 
-    isleep(5000);
-    while (net.tx > 0) {
-        int tx = net.tx;
-        printf("%d packet in net\n", tx);
-    }
-
+    isleep(1000);
     clientFinish = true;
     printf("client end\n");
 }

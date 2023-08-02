@@ -524,6 +524,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT8 reliability, IUIN
 
 	// append to previous segment in streaming mode (if possible)
 	if (kcp->stream != 0) {
+        channel = 0;
         reliability = IKCP_RELIABLE_ORDERD;
 		if (!iqueue_is_empty(&kcp->snd_queue)) {
 			IKCPSEG *old = iqueue_entry(kcp->snd_queue.prev, IKCPSEG, node);
@@ -622,12 +623,14 @@ static void ikcp_update_ack(ikcpcb *kcp, IINT32 rtt)
 static void ikcp_shrink_buf(ikcpcb *kcp, IUINT8 channel)
 {
 	struct IQUEUEHEAD *p = kcp->snd_buf[channel].next;
-	if (p != &kcp->snd_buf[channel]) {
-		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
-		kcp->snd_una[channel] = seg->sn;
-	}	else {
-		kcp->snd_una[channel] = kcp->snd_nxt[channel];
-	}
+    while (p != &kcp->snd_buf[channel]) {
+        IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
+        if (seg->reliability != IKCP_UNRELIABLE) {
+            kcp->snd_una[channel] = seg->sn;
+            return;
+        }
+    }
+    kcp->snd_una[channel] = kcp->snd_nxt[channel];
 }
 
 static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn, IUINT16 seq, IUINT8 channel, IUINT8 reliability)
@@ -1133,7 +1136,7 @@ void ikcp_flush(ikcpcb *kcp)
             newseg->sn = kcp->snd_nxt[channel] ++;
             newseg->seq = kcp->snd_seq_nxt[channel] ++;
             kcp->snd_seq_nxt[channel] = 0;
-        } else {
+        } else if (newseg->reliability > IKCP_UNRELIABLE){
             newseg->sn = kcp->snd_nxt[channel];
             newseg->seq = kcp->snd_seq_nxt[channel] ++;
         }
@@ -1154,8 +1157,9 @@ void ikcp_flush(ikcpcb *kcp)
 
 	// flush data segments
     for (IUINT8 channel = 0; channel < IKCP_CHANNEL_COUNT; channel ++) {
-        for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = p->next) {
+        for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; ) {
             IKCPSEG *segment = iqueue_entry(p, IKCPSEG, node);
+            p = p->next;
             int needsend = 0;
             if (segment->xmit == 0) {
                 needsend = 1;
@@ -1212,6 +1216,13 @@ void ikcp_flush(ikcpcb *kcp)
                 if (segment->xmit >= kcp->dead_link) {
                     kcp->state = (IUINT32)-1;
                 }
+
+                if (segment->reliability < IKCP_RELIABLE_SEQUENCED) {
+                    iqueue_del(&segment->node);
+                    ikcp_segment_delete(kcp, segment);
+                    kcp->una_count --;
+                    kcp->nsnd_buf --;
+                }
             }
         }
     }
@@ -1224,7 +1235,7 @@ void ikcp_flush(ikcpcb *kcp)
 
     // update ssthresh
     if (change) {
-        IUINT32 inflight = kcp->snd_nxt - kcp->snd_una;
+        IUINT32 inflight = kcp->una_count;
         kcp->ssthresh = inflight / 2;
         if (kcp->ssthresh < IKCP_THRESH_MIN)
             kcp->ssthresh = IKCP_THRESH_MIN;
