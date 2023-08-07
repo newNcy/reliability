@@ -215,7 +215,7 @@ static int ikcp_output(ikcpcb *kcp, const void *data, int size)
 // output queue
 void ikcp_qprint(const char *name,const struct IQUEUEHEAD *head)
 {
-#if 1
+#if 0
 	const struct IQUEUEHEAD *p;
 	printf("<%s>: [", name);
 	for (p = head->next; p != head; p = p->next) {
@@ -241,7 +241,7 @@ static void ikcp_shrink_rcv_buf(ikcpcb * kcp)
                     kcp->nrcv_buf--;
                     iqueue_add_tail(&seg->node, &kcp->rcv_queue);
                     kcp->nrcv_que++;
-                    if (seg->reliability == IKCP_RELIABLE_ORDERD) {
+                    if (seg->reliability == IKCP_RELIABLE_ORDERED) {
                         kcp->rcv_nxt[channel]++;
                         kcp->rcv_seq_highest[channel] = 0;
                     }else {
@@ -271,7 +271,7 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->conv = conv;
 	kcp->user = user;
 
-    printf("%u\n", sizeof(kcp->snd_una));
+    //printf("%u\n", sizeof(kcp->snd_una));
     memset(kcp->snd_una, 0, sizeof(kcp->snd_una));
     memset(kcp->snd_nxt, 0, sizeof(kcp->snd_nxt));
     memset(kcp->rcv_nxt, 0, sizeof(kcp->rcv_nxt));
@@ -515,8 +515,8 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT8 reliability, IUIN
         channel = 0;
     }
 
-    if (reliability > IKCP_RELIABLE_ORDERD) {
-        reliability = IKCP_RELIABLE_ORDERD;
+    if (reliability > IKCP_RELIABLE_ORDERED) {
+        reliability = IKCP_RELIABLE_ORDERED;
     }
 
 	assert(kcp->mss > 0);
@@ -525,7 +525,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT8 reliability, IUIN
 	// append to previous segment in streaming mode (if possible)
 	if (kcp->stream != 0) {
         channel = 0;
-        reliability = IKCP_RELIABLE_ORDERD;
+        reliability = IKCP_RELIABLE_ORDERED;
 		if (!iqueue_is_empty(&kcp->snd_queue)) {
 			IKCPSEG *old = iqueue_entry(kcp->snd_queue.prev, IKCPSEG, node);
 			if (old->len < kcp->mss) {
@@ -567,7 +567,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT8 reliability, IUIN
 	if (count == 0) count = 1;
     if (count > 1)
     {
-        reliability = IKCP_RELIABLE_ORDERD;
+        reliability = IKCP_RELIABLE_ORDERED;
     }
 
 	// fragment
@@ -637,7 +637,7 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn, IUINT16 seq, IUINT8 channel,
 {
 	struct IQUEUEHEAD *p, *next;
 
-    printf("ack for channel=%u [sn=%u seq=%u r=%u] while una=%u nxt=%u \n", channel, sn, seq, reliability, kcp->snd_una[channel], kcp->snd_nxt[channel]);
+    //printf("ack for channel=%u [sn=%u seq=%u r=%u] while una=%u nxt=%u \n", channel, sn, seq, reliability, kcp->snd_una[channel], kcp->snd_nxt[channel]);
 	if (_itimediff(sn, kcp->snd_una[channel]) < 0 || _itimediff(sn, kcp->snd_nxt[channel]) >= 1)
 		return;
 
@@ -645,30 +645,29 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn, IUINT16 seq, IUINT8 channel,
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
 		if (sn == seg->sn && _itimediff(seq, seg->seq) >= 0) {
-            printf("del channel:%u [sn=%u seq=%u r=%u] from sndbuf\n", channel, seg->sn, seg->seq, seg->reliability);
+            //printf("del channel:%u [sn=%u seq=%u r=%u] from sndbuf\n", channel, seg->sn, seg->seq, seg->reliability);
 			iqueue_del(p);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
             kcp->una_count --;
-			break;
 		}
 		if (_itimediff(sn, seg->sn) < 0) {
 			break;
 		}
 	}
-    ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
+    //ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
 }
 
 static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una, IUINT8 channel)
 {
-    printf("una for channel=%u [sn=%u ] while una=%u nxt=%u \n", channel, una,kcp->snd_una[channel], kcp->snd_nxt[channel]);
+    //printf("una for channel=%u [sn=%u ] while una=%u nxt=%u \n", channel, una,kcp->snd_una[channel], kcp->snd_nxt[channel]);
 	struct IQUEUEHEAD *p, *next;
 	for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = next) {
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
 		if (_itimediff(una, seg->sn) > 0) {
 			iqueue_del(p);
-            printf("del channel:%u sn:%u seq:%u from sndbuf\n", channel, seg->sn, seg->seq);
+            //printf("del channel:%u sn:%u seq:%u from sndbuf\n", channel, seg->sn, seg->seq);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
             kcp->una_count --;
@@ -676,7 +675,7 @@ static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una, IUINT8 channel)
 			break;
 		}
 	}
-    ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
+    //ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
 }
 
 static void ikcp_parse_fastack(ikcpcb *kcp, IUINT32 sn,  IUINT32 ts, IUINT16 seq, IUINT8 channel)
@@ -768,11 +767,10 @@ void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
 	int repeat = 0;
     int empty_count = 0;
 	
-	ikcp_qprint("rcvbuf before", &kcp->rcv_buf[channel]);
+	//ikcp_qprint("rcvbuf before", &kcp->rcv_buf[channel]);
 	if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) >= 0 ||
 		_itimediff(sn, kcp->rcv_nxt[channel]) < 0) {
 		ikcp_segment_delete(kcp, newseg);
-        printf("delete");
 		return;
 	}
 
@@ -797,7 +795,7 @@ void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
 		ikcp_segment_delete(kcp, newseg);
 	}
 
-#if 1
+#if 0
 	ikcp_qprint("rcvbuf", &kcp->rcv_buf[channel]);
     printf("rcv_nxt:%u\n", kcp->rcv_nxt[channel]);
 #endif
@@ -805,7 +803,7 @@ void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
 	// move available data from rcv_buf -> rcv_queue
     ikcp_shrink_rcv_buf(kcp);
 
-#if 1
+#if 0
     ikcp_qprint("queue", &kcp->rcv_queue);
 #endif
 
@@ -900,7 +898,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			}
 		}
 		else if (cmd == IKCP_CMD_PUSH) {
-            printf("recv push (%u %u %u %u)\n", channel, sn, seq, reliability);
+            //printf("recv push (%u %u %u %u)\n", channel, sn, seq, reliability);
 			if (ikcp_canlog(kcp, IKCP_LOG_IN_DATA)) {
 				ikcp_log(kcp, IKCP_LOG_IN_DATA, 
 					"input psh: sn=%lu ts=%lu", (unsigned long)sn, (unsigned long)ts);
@@ -949,7 +947,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 
 					ikcp_parse_data(kcp, seg);
 				}else {
-                    printf("drop data packet channel=%u [sn=%u seq=%u r=%u] while rcv_nxt=%u max seq=%u\n", channel, sn , seq, reliability, kcp->rcv_nxt[channel], kcp->rcv_seq_highest[channel]);
+                    //printf("drop data packet channel=%u [sn=%u seq=%u r=%u] while rcv_nxt=%u max seq=%u\n", channel, sn , seq, reliability, kcp->rcv_nxt[channel], kcp->rcv_seq_highest[channel]);
                 }
 			}
 		}
@@ -1152,7 +1150,7 @@ void ikcp_flush(ikcpcb *kcp)
 		newseg->cmd = IKCP_CMD_PUSH;
 		newseg->wnd = seg.wnd;
 		newseg->ts = current;
-        if (newseg->reliability == IKCP_RELIABLE_ORDERD) {
+        if (newseg->reliability == IKCP_RELIABLE_ORDERED) {
             newseg->sn = kcp->snd_nxt[channel] ++;
             newseg->seq = kcp->snd_seq_nxt[channel] ++;
             kcp->snd_seq_nxt[channel] = 0;
@@ -1161,7 +1159,7 @@ void ikcp_flush(ikcpcb *kcp)
             newseg->seq = kcp->snd_seq_nxt[channel] ++;
         }
 
-        printf("flush (%u %u %u %u)\n", newseg->channel, newseg->sn, newseg->seq, newseg->reliability);
+        //printf("flush (%u %u %u %u)\n", newseg->channel, newseg->sn, newseg->seq, newseg->reliability);
 		newseg->una = kcp->rcv_nxt[channel];
 		newseg->resendts = current;
 		newseg->rto = kcp->rx_rto;

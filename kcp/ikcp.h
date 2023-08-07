@@ -264,7 +264,7 @@ typedef struct IQUEUEHEAD iqueue_head;
 #define IKCP_UNRELIABLE             0
 #define IKCP_UNRELIABLE_SEQUENCED   1
 #define IKCP_RELIABLE_SEQUENCED     2
-#define IKCP_RELIABLE_ORDERD        3
+#define IKCP_RELIABLE_ORDERED       3
 
 
 //=====================================================================

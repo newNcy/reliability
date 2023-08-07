@@ -1,6 +1,6 @@
 
 #include "kcp/test.h"
-#include "reliability.h"
+#include "encoding.h"
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 #include <vector>
+#define MTU 1400
 
 
 struct Packet
@@ -36,6 +37,7 @@ struct Net
     int delaymin, delaymax;
     std::mutex netmtx;
     std::map<int, std::multiset<Packet>> packBuff;
+    std::map<int, uint32_t> recvCounter;
     std::atomic<int> tx;
     std::mt19937 engine;
     Net(int lostrate, int delaymin, int delaymax): lostrate(lostrate), delaymin(delaymin), delaymax(delaymax), engine(time(nullptr)) { }
@@ -43,6 +45,12 @@ struct Net
     void send(int dst, const void * buff, uint32_t length)
     {
         std::lock_guard<std::mutex> _(netmtx);
+        auto it = recvCounter.find(dst);
+        if (it == recvCounter.end()) {
+            recvCounter[dst] = length;
+        }else {
+            it->second += length;
+        }
         std::uniform_int_distribution<int> dist(1, 100);
         int lost = dist(engine);
         if ( lost< lostrate) {
@@ -82,6 +90,11 @@ struct Net
         }
         return length;
     }
+    ~Net() {
+        for (auto it = recvCounter.begin(); it != recvCounter.end(); it ++) {
+            printf("%d recv %d bytes\n", it->first, it->second);
+        }
+    }
 };
 
 
@@ -89,14 +102,6 @@ Net net(20, 60, 125);
 bool clientFinish = false;
 
 
-
-int layer_output(const char * buff, int len, ReliabilityLayer * reliabilityLayer,  void * ud)
-{
-    //printf("send %d bytes to %llu\n", len, ud);
-    int target = (long long)ud;
-    net.send(target, buff, len);
-    return len;
-}
 
 int kcp_output(const char * buff, int len, ikcpcb * kcp, void * ud)
 {
@@ -176,7 +181,7 @@ void client()
     printf("client start\n");
 
     int sn = 1;
-    int limit = 9;
+    int limit = 100;
     auto last = iclock();
     for (;;) {
         //net.send(0, &i, sizeof(i));
@@ -185,7 +190,14 @@ void client()
         if (sn <= limit && now - last > 10) {
             last = now;
             //reliabilityLayer->Send(&sn, sizeof(sn), sn % 10==0? Reliability::RELIABLE_ORDERED : Reliability::RELIABLE_SEQUENCED, 0);
-            ikcp_send(kcp, (char*)&sn, sizeof(sn), IKCP_UNRELIABLE, 0);
+            unsigned char reliability = IKCP_RELIABLE_SEQUENCED;
+            if (sn % 10 == 9) {
+                reliability = IKCP_UNRELIABLE_SEQUENCED;
+            } else if (sn  % 10 == 0) {
+                reliability = IKCP_RELIABLE_ORDERED;
+            }
+            reliability = IKCP_RELIABLE_SEQUENCED;
+            ikcp_send(kcp, (char*)&sn, sizeof(sn), reliability, 0);
             ikcp_flush(kcp);
             printf("[c:%u] send %d\n", now, sn);
             sn ++ ;
@@ -212,7 +224,6 @@ void client()
 int main() 
 {
     srand(time(nullptr));
-
 
     std::thread st(server);
     std::thread ct(client);
