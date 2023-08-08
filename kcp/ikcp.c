@@ -37,7 +37,7 @@ const IUINT32 IKCP_WND_RCV = 128;       // must >= max fragment size
 const IUINT32 IKCP_MTU_DEF = 1400;
 const IUINT32 IKCP_ACK_FAST	= 3;
 const IUINT32 IKCP_INTERVAL	= 100;
-const IUINT32 IKCP_OVERHEAD = 28;
+const IUINT32 IKCP_OVERHEAD = 24;
 const IUINT32 IKCP_DEADLINK = 20;
 const IUINT32 IKCP_THRESH_INIT = 2;
 const IUINT32 IKCP_THRESH_MIN = 2;
@@ -138,6 +138,11 @@ static inline long _itimediff(IUINT32 later, IUINT32 earlier)
 	return ((IINT32)(later - earlier));
 }
 
+static inline long _iu16diff(IUINT16 later, IUINT16 earlier)
+{
+    return (IINT16)(later - earlier);
+}
+
 //---------------------------------------------------------------------
 // manage segment
 //---------------------------------------------------------------------
@@ -236,7 +241,7 @@ static void ikcp_shrink_rcv_buf(ikcpcb * kcp)
             if (! iqueue_is_empty(&kcp->rcv_buf[channel])) {
                 IKCPSEG *seg = iqueue_entry(kcp->rcv_buf[channel].next, IKCPSEG, node);
 
-                if (seg->sn == kcp->rcv_nxt[channel] && _itimediff(seg->seq, kcp->rcv_seq_highest[channel]) >= 0) {
+                if (seg->sn == kcp->rcv_nxt[channel] && _iu16diff(seg->seq, kcp->rcv_seq_highest[channel]) >= 0) {
                     iqueue_del(&seg->node);
                     kcp->nrcv_buf--;
                     iqueue_add_tail(&seg->node, &kcp->rcv_queue);
@@ -633,39 +638,39 @@ static void ikcp_shrink_buf(ikcpcb *kcp, IUINT8 channel)
     kcp->snd_una[channel] = kcp->snd_nxt[channel];
 }
 
-static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn, IUINT16 seq, IUINT8 channel, IUINT8 reliability)
+static void ikcp_parse_ack(ikcpcb *kcp, IUINT16 sn, IUINT16 seq, IUINT8 channel, IUINT8 reliability)
 {
 	struct IQUEUEHEAD *p, *next;
 
     //printf("ack for channel=%u [sn=%u seq=%u r=%u] while una=%u nxt=%u \n", channel, sn, seq, reliability, kcp->snd_una[channel], kcp->snd_nxt[channel]);
-	if (_itimediff(sn, kcp->snd_una[channel]) < 0 || _itimediff(sn, kcp->snd_nxt[channel]) >= 1)
+	if (_iu16diff(sn, kcp->snd_una[channel]) < 0 || _iu16diff(sn, kcp->snd_nxt[channel]) >= 1)
 		return;
 
 	for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = next) {
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
-		if (sn == seg->sn && _itimediff(seq, seg->seq) >= 0) {
+		if (sn == seg->sn && _iu16diff(seq, seg->seq) >= 0) {
             //printf("del channel:%u [sn=%u seq=%u r=%u] from sndbuf\n", channel, seg->sn, seg->seq, seg->reliability);
 			iqueue_del(p);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
             kcp->una_count --;
 		}
-		if (_itimediff(sn, seg->sn) < 0) {
+		if (_iu16diff(sn, seg->sn) < 0) {
 			break;
 		}
 	}
     //ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
 }
 
-static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una, IUINT8 channel)
+static void ikcp_parse_una(ikcpcb *kcp, IUINT16 una, IUINT8 channel)
 {
     //printf("una for channel=%u [sn=%u ] while una=%u nxt=%u \n", channel, una,kcp->snd_una[channel], kcp->snd_nxt[channel]);
 	struct IQUEUEHEAD *p, *next;
 	for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = next) {
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
-		if (_itimediff(una, seg->sn) > 0) {
+		if (_iu16diff(una, seg->sn) > 0) {
 			iqueue_del(p);
             //printf("del channel:%u sn:%u seq:%u from sndbuf\n", channel, seg->sn, seg->seq);
 			ikcp_segment_delete(kcp, seg);
@@ -678,24 +683,24 @@ static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una, IUINT8 channel)
     //ikcp_qprint("snd_buf", &kcp->snd_buf[channel]);
 }
 
-static void ikcp_parse_fastack(ikcpcb *kcp, IUINT32 sn,  IUINT32 ts, IUINT16 seq, IUINT8 channel)
+static void ikcp_parse_fastack(ikcpcb *kcp, IUINT16 sn,  IUINT32 ts, IUINT16 seq, IUINT8 channel)
 {
 	struct IQUEUEHEAD *p, *next;
 
-	if (_itimediff(sn, kcp->snd_una[channel]) < 0 || _itimediff(sn, kcp->snd_nxt[channel]) >= 0)
+	if (_iu16diff(sn, kcp->snd_una[channel]) < 0 || _iu16diff(sn, kcp->snd_nxt[channel]) >= 0)
 		return;
 
 	for (p = kcp->snd_buf[channel].next; p != &kcp->snd_buf[channel]; p = next) {
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
-		if (_itimediff(sn, seg->sn) < 0) {
+		if (_iu16diff(sn, seg->sn) < 0) {
 			break;
 		}
-		else if (sn != seg->sn || _itimediff(seq, seg->seq) ) {
+		else if (sn != seg->sn || _iu16diff(seq, seg->seq) ) {
 		#ifndef IKCP_FASTACK_CONSERVE
 			seg->fastack++;
 		#else
-			if (_itimediff(ts, seg->ts) >= 0)
+			if (_iu16diff(ts, seg->ts) >= 0)
 				seg->fastack++;
 		#endif
 		}
@@ -706,7 +711,7 @@ static void ikcp_parse_fastack(ikcpcb *kcp, IUINT32 sn,  IUINT32 ts, IUINT16 seq
 //---------------------------------------------------------------------
 // ack append
 //---------------------------------------------------------------------
-static void ikcp_ack_push(ikcpcb *kcp, IUINT32 sn, IUINT32 ts, IUINT16 seq, IUINT8 channel, IUINT8 reliability)
+static void ikcp_ack_push(ikcpcb *kcp, IUINT16 sn, IUINT32 ts, IUINT16 seq, IUINT8 channel, IUINT8 reliability)
 {
 	IUINT32 newsize = kcp->ackcount + 1;
 	ikcp_ack *ptr;
@@ -744,7 +749,7 @@ static void ikcp_ack_push(ikcpcb *kcp, IUINT32 sn, IUINT32 ts, IUINT16 seq, IUIN
 	kcp->ackcount++;
 }
 
-static void ikcp_ack_get(const ikcpcb *kcp, int p, IUINT32 *sn, IUINT32 *ts, IUINT16 * seq, IUINT8 * channel, IUINT8 * reliability)
+static void ikcp_ack_get(const ikcpcb *kcp, int p, IUINT16 *sn, IUINT32 *ts, IUINT16 * seq, IUINT8 * channel, IUINT8 * reliability)
 {
 	if (sn) sn[0] = kcp->acklist[p].sn;
 	if (ts) ts[0] = kcp->acklist[p].ts;
@@ -760,7 +765,7 @@ static void ikcp_ack_get(const ikcpcb *kcp, int p, IUINT32 *sn, IUINT32 *ts, IUI
 void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
 {
 	struct IQUEUEHEAD *p, *prev;
-	IUINT32 sn = newseg->sn;
+	IUINT16 sn = newseg->sn;
     IUINT8 channel = newseg->channel;
     IUINT8 reliability = newseg->reliability;
     IUINT16 seq = newseg->seq;
@@ -768,8 +773,8 @@ void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
     int empty_count = 0;
 	
 	//ikcp_qprint("rcvbuf before", &kcp->rcv_buf[channel]);
-	if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) >= 0 ||
-		_itimediff(sn, kcp->rcv_nxt[channel]) < 0) {
+	if (_iu16diff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) >= 0 ||
+		_iu16diff(sn, kcp->rcv_nxt[channel]) < 0) {
 		ikcp_segment_delete(kcp, newseg);
 		return;
 	}
@@ -782,7 +787,7 @@ void ikcp_parse_data(ikcpcb *kcp, IKCPSEG *newseg)
 			break;
 		}
 
-		if (_itimediff(sn, seg->sn) > 0 || (sn == seg->sn && _itimediff(seq, seg->seq) > 0)) {
+		if (_iu16diff(sn, seg->sn) > 0 || (sn == seg->sn && _iu16diff(seq, seg->seq) > 0)) {
 			break;
 		}
 	}
@@ -829,8 +834,8 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 	if (data == NULL || (int)size < (int)IKCP_OVERHEAD) return -1;
 
 	while (1) {
-		IUINT32 ts, sn, len, una, conv;
-		IUINT16 wnd, seq;
+		IUINT32 ts, len, conv;
+		IUINT16 wnd, sn, una, seq;
 		IUINT8 cmd, frg, channel;
 		IKCPSEG *seg;
         IUINT8 reliability;
@@ -844,8 +849,8 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 		data = ikcp_decode8u(data, &frg);
 		data = ikcp_decode16u(data, &wnd);
 		data = ikcp_decode32u(data, &ts);
-		data = ikcp_decode32u(data, &sn);
-		data = ikcp_decode32u(data, &una);
+		data = ikcp_decode16u(data, &sn);
+		data = ikcp_decode16u(data, &una);
 		data = ikcp_decode32u(data, &len);
         data = ikcp_decode16u(data, &seq);
         data = ikcp_decode8u(data, &channel);
@@ -878,7 +883,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 				maxack = sn;
 				latest_ts = ts;
 			}	else {
-				if (_itimediff(sn, maxack) > 0) {
+				if (_iu16diff(sn, maxack) > 0) {
 				#ifndef IKCP_FASTACK_CONSERVE
 					maxack = sn;
 					latest_ts = ts;
@@ -923,11 +928,11 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
                 }
                 iqueue_add_tail(&seg->node, &kcp->rcv_queue);
                 kcp->nrcv_que ++;
-            } else if (_itimediff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) < 0) {
+            } else if (_iu16diff(sn, kcp->rcv_nxt[channel] + kcp->rcv_wnd) < 0) {
                 if (reliability > IKCP_UNRELIABLE_SEQUENCED) {
                     ikcp_ack_push(kcp, sn, ts, seq, channel, reliability);
                 }
-                if (_itimediff(sn, kcp->rcv_nxt[channel]) >= 0) {
+                if (_iu16diff(sn, kcp->rcv_nxt[channel]) >= 0) {
 					seg = ikcp_segment_new(kcp, len);
 					seg->conv = conv;
 					seg->cmd = cmd;
@@ -979,7 +984,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
             ikcp_parse_fastack(kcp, maxack, latest_ts, seq, channel);
         }
 
-        if (_itimediff(kcp->snd_una[channel], prev_una) > 0) {
+        if (_iu16diff(kcp->snd_una[channel], prev_una) > 0) {
             if (kcp->cwnd < kcp->rmt_wnd) {
                 IUINT32 mss = kcp->mss;
                 if (kcp->cwnd < kcp->ssthresh) {
@@ -1020,8 +1025,8 @@ static char *ikcp_encode_seg(char *ptr, const IKCPSEG *seg)
 	ptr = ikcp_encode8u(ptr, (IUINT8)seg->frg);
 	ptr = ikcp_encode16u(ptr, (IUINT16)seg->wnd);
 	ptr = ikcp_encode32u(ptr, seg->ts);
-	ptr = ikcp_encode32u(ptr, seg->sn);
-	ptr = ikcp_encode32u(ptr, seg->una);
+	ptr = ikcp_encode16u(ptr, seg->sn);
+	ptr = ikcp_encode16u(ptr, seg->una);
 	ptr = ikcp_encode32u(ptr, seg->len);
 	ptr = ikcp_encode16u(ptr, seg->seq);
 	ptr = ikcp_encode8u(ptr, seg->channel);

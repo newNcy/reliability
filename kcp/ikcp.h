@@ -278,8 +278,8 @@ struct IKCPSEG
 	IUINT32 frg;
 	IUINT32 wnd;
 	IUINT32 ts;
-	IUINT32 sn;
-	IUINT32 una;
+	IUINT16 sn;
+	IUINT16 una;
 	IUINT32 len;
 	IUINT32 resendts;
 	IUINT32 rto;
@@ -293,11 +293,11 @@ struct IKCPSEG
 
 struct IKCP_ACK
 {
+    IUINT32 ts;
+    IUINT16 sn;
+    IUINT16 seq;
     IUINT8 channel;
     IUINT8 reliability;
-    IUINT16 seq;
-    IUINT32 sn;
-    IUINT32 ts;
 };
 
 typedef struct IKCP_ACK ikcp_ack;
@@ -310,9 +310,9 @@ struct IKCPCB
 {
 	IUINT32 conv, mtu, mss, state;
 
-	IUINT32 snd_una[IKCP_CHANNEL_COUNT];
-    IUINT32 snd_nxt[IKCP_CHANNEL_COUNT];
-    IUINT32 rcv_nxt[IKCP_CHANNEL_COUNT];
+	IUINT16 snd_una[IKCP_CHANNEL_COUNT];
+    IUINT16 snd_nxt[IKCP_CHANNEL_COUNT];
+    IUINT16 rcv_nxt[IKCP_CHANNEL_COUNT];
     IUINT16 snd_seq_nxt[IKCP_CHANNEL_COUNT];
     IUINT16 rcv_seq_highest[IKCP_CHANNEL_COUNT];
 
